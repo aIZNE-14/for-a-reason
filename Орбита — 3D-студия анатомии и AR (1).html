@@ -1,0 +1,251 @@
+<!DOCTYPE html><html lang="ru"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Орбита — 3D-студия анатомии и AR</title>
+<link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@400;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{color-scheme:dark;--glass:rgba(8,16,38,.58);--line:rgba(90,230,255,.28);--cy:#4de8ff;--am:#ffb347;--tx:#d3eaf6;--mu:#86a3b8;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+html,body{height:100%;margin:0;background:#02030a;color:var(--tx);font:13px 'Exo 2',system-ui,sans-serif;overflow:hidden}
+canvas{display:block;position:fixed;inset:0;width:100%;height:100%}
+.col{position:fixed;top:44px;bottom:10px;display:flex;flex-direction:column;gap:8px;overflow-y:auto;pointer-events:none;scrollbar-width:thin}
+.col>*{pointer-events:auto}#L{left:10px;width:272px}#Rt{right:10px;width:262px}
+.p{background:var(--glass);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border:1px solid var(--line);border-radius:10px;padding:10px}
+.p h3{margin:0 0 8px;font-size:12px;font-weight:600;color:var(--cy)}
+summary{cursor:pointer;color:var(--cy);font-weight:600;font-size:12px}
+button{font:inherit;color:var(--tx);background:rgba(77,232,255,.08);border:1px solid var(--line);border-radius:6px;padding:5px 8px;cursor:pointer}
+button:hover,button.on{background:rgba(77,232,255,.26);border-color:var(--cy)}
+button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible{outline:2px solid var(--am);outline-offset:1px}
+.row{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px}
+.mono,input[type=number],#tele{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px}
+input[type=number],select{width:100%;min-width:0;background:rgba(0,0,0,.35);color:var(--cy);border:1px solid var(--line);border-radius:5px;padding:3px 4px}
+input[type=range]{width:100%;accent-color:var(--cy);margin:0}
+.sl{display:grid;grid-template-columns:104px 1fr 30px;gap:5px;align-items:center;margin:3px 0;color:var(--mu)}
+.sl b{font-weight:400;color:var(--am);text-align:right}
+.tr{display:grid;grid-template-columns:66px repeat(3,1fr);gap:3px;margin:3px 0;align-items:center;color:var(--mu)}
+#list div{padding:3px 6px;border-radius:4px;cursor:pointer}#list div.sel{background:rgba(77,232,255,.2);color:var(--cy)}
+label.ck{display:inline-flex;gap:5px;align-items:center;margin-right:8px;color:var(--tx)}
+#bar{position:fixed;top:calc(env(safe-area-inset-top,0px) + 8px);left:50%;transform:translateX(-50%);display:flex;gap:10px;align-items:center;z-index:5}
+#bar span{font-weight:600;color:var(--cy);text-shadow:0 0 12px rgba(77,232,255,.6)}
+#tele{position:fixed;bottom:10px;left:50%;transform:translateX(-50%);color:var(--cy);background:var(--glass);border:1px solid var(--line);border-radius:8px;padding:5px 10px;white-space:nowrap;pointer-events:none}
+.hide .col,.hide #tele{display:none}
+#ar{position:fixed;inset:0;display:none;flex-direction:column;background:rgba(2,3,10,.94);z-index:20}
+#ar model-viewer{flex:1;width:100%;--poster-color:transparent}
+#ar .bt{display:flex;gap:8px;align-items:center;padding:10px;color:var(--mu)}
+@media(max-width:760px){#L{width:46vw}#Rt{width:46vw}.sl{grid-template-columns:70px 1fr 26px}#tele{display:none}}
+</style></head><body>
+<div id="bar"><span>Орбита</span><button id="hud">Скрыть панели</button></div>
+<div class="col" id="L">
+ <div class="p"><h3>Создать</h3><div class="row" id="prims"></div><div class="row"><button id="addMan">Анатомический манекен</button></div></div>
+ <div class="p"><h3>Иерархия сцены</h3><div id="list"></div><div class="row" style="margin-top:6px"><button id="dup">Дублировать</button><button id="del">Удалить</button></div></div>
+ <div class="p"><h3>Манекен</h3><div class="row" id="poses"></div>
+  <div class="row"><label class="ck"><input type="checkbox" data-l="muscle" checked>Мышцы</label><label class="ck"><input type="checkbox" data-l="base" checked>Манекен</label><label class="ck"><input type="checkbox" data-l="wire">Контур</label><label class="ck"><input type="checkbox" id="xray">Рентген</label></div>
+  <details open><summary>Суставы</summary><div id="sliders"></div></details></div>
+</div>
+<div class="col" id="Rt">
+ <div class="p"><h3>Трансформация</h3><div class="row"><button data-tm="translate" class="on">Двигать</button><button data-tm="rotate">Вращать</button><button data-tm="scale">Масштаб</button></div><div id="tf"></div></div>
+ <div class="p"><h3>Материал</h3><div class="row"><button data-m="metal">Металл</button><button data-m="holo">Голограмма</button><button data-m="plastic">Пластик</button><button data-m="muscle">Мышца</button><button data-m="wire">Каркас</button></div>
+  <h3 style="margin-top:8px">Физика</h3><select id="mode"><option value="o">Выключена</option><option value="g">Гравитация и столкновения</option><option value="z">Невесомость</option></select></div>
+ <div class="p"><h3>Свет и сцена</h3>
+  <select id="sp"><option value="#fff1d6">Жёлтый карлик</option><option value="#bcd4ff">Белый карлик</option><option value="#ff8a5a">Красный гигант</option></select>
+  <label class="sl"><span>Сила звезды</span><input type="range" id="ki" min="0" max="4" step=".1" value="2.2"></label>
+  <label class="sl"><span>Азимут</span><input type="range" id="az" min="0" max="360" value="40"></label>
+  <label class="sl"><span>Высота</span><input type="range" id="el" min="5" max="85" value="50"></label>
+  <label class="sl"><span>Рассеянный</span><input type="range" id="am" min="0" max="1.5" step=".05" value=".6"></label>
+  <div class="row" style="margin-top:6px"><label class="ck"><input type="checkbox" id="gw" checked>Гравитационная сетка</label></div></div>
+ <div class="p"><h3>Камера и AR</h3><div class="row" id="cams"></div>
+  <div class="row"><label class="ck"><input type="checkbox" id="spin">Автовращение</label></div>
+  <div class="row"><button id="exp">Скачать .glb</button><button id="arb">Смотреть в AR</button></div>
+  <div class="mono" style="color:var(--mu)">W E R — режимы, Del — удалить</div></div>
+</div>
+<div id="tele">загрузка…</div>
+<div id="ar"><model-viewer id="mv" ar ar-modes="webxr scene-viewer quick-look" camera-controls auto-rotate shadow-intensity="1" ar-scale="auto"><button slot="ar-button" style="position:absolute;bottom:20px;left:50%;transform:translateX(-50%);padding:10px 18px;background:#0b3b4a;border-color:#4de8ff">Запустить AR</button></model-viewer>
+ <div class="bt"><button id="arx">Закрыть</button><span>AR запускается на телефоне: откройте эту страницу по ссылке и нажмите «Запустить AR».</span></div></div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/TransformControls.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/exporters/GLTFExporter.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/@google/model-viewer@3.5.0/dist/model-viewer.min.js"></script>
+<script>
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)],PI=Math.PI;
+addEventListener('error',e=>{const t=$('#tele');t.style.cssText='display:block;white-space:normal;max-width:90vw';t.textContent='Ошибка: '+(e.message||'не загрузился скрипт')});
+if(!(window.THREE&&THREE.OrbitControls&&THREE.TransformControls&&THREE.GLTFExporter)){const t=$('#tele');t.style.cssText='display:block;white-space:normal;max-width:90vw';t.textContent='Не загрузились библиотеки Three.js. Проверьте интернет и обновите страницу.';throw new Error('libs')}
+const R=new THREE.WebGLRenderer({antialias:true});R.setPixelRatio(Math.min(devicePixelRatio,2));R.outputEncoding=THREE.sRGBEncoding;R.toneMapping=THREE.ACESFilmicToneMapping;R.shadowMap.enabled=true;R.shadowMap.type=THREE.PCFSoftShadowMap;document.body.prepend(R.domElement);
+const S=new THREE.Scene(),C=new THREE.PerspectiveCamera(45,1,.05,600);C.position.set(2.8,1.8,3.8);
+const OC=new THREE.OrbitControls(C,R.domElement);OC.target.set(0,.9,0);OC.enableDamping=true;OC.maxDistance=40;
+function size(){R.setSize(innerWidth,innerHeight);C.aspect=innerWidth/innerHeight;C.updateProjectionMatrix()}addEventListener('resize',size);size();
+
+/* ---------- космос: звёзды и туманность ---------- */
+const N=2600,pa=new Float32Array(N*3),sz=new Float32Array(N);
+for(let i=0;i<N;i++){const u=Math.random()*2-1,t=Math.random()*6.2832,s=Math.sqrt(1-u*u);pa.set([s*Math.cos(t)*250,u*250,s*Math.sin(t)*250],i*3);sz[i]=1+Math.random()*Math.random()*4}
+const sg=new THREE.BufferGeometry();sg.setAttribute('position',new THREE.BufferAttribute(pa,3));sg.setAttribute('sz',new THREE.BufferAttribute(sz,1));
+const stars=new THREE.Points(sg,new THREE.ShaderMaterial({transparent:true,depthWrite:false,uniforms:{t:{value:0}},
+ vertexShader:'attribute float sz;uniform float t;varying float a;void main(){a=.65+.35*sin(t*1.6+sz*40.);gl_PointSize=sz*1.4;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
+ fragmentShader:'varying float a;void main(){float d=length(gl_PointCoord-.5);if(d>.5)discard;gl_FragColor=vec4(.8,.92,1.,a*(1.-d*2.));}'}));
+stars.frustumCulled=false;stars.renderOrder=-1;S.add(stars);
+const neb=new THREE.Mesh(new THREE.SphereGeometry(400,32,20),new THREE.ShaderMaterial({side:THREE.BackSide,depthWrite:false,
+ vertexShader:'varying vec3 d;void main(){d=position;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
+ fragmentShader:`varying vec3 d;float h(vec3 p){return fract(sin(dot(p,vec3(127.1,311.7,74.7)))*43758.5453);}
+float n(vec3 p){vec3 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(mix(h(i),h(i+vec3(1,0,0)),f.x),mix(h(i+vec3(0,1,0)),h(i+vec3(1,1,0)),f.x),f.y),mix(mix(h(i+vec3(0,0,1)),h(i+vec3(1,0,1)),f.x),mix(h(i+vec3(0,1,1)),h(i+vec3(1,1,1)),f.x),f.y),f.z);}
+void main(){vec3 p=normalize(d)*2.2;float v=0.,a=.5;for(int i=0;i<5;i++){v+=a*n(p);p*=2.1;a*=.5;}v=smoothstep(.3,.85,v);
+vec3 c=mix(vec3(.008,.012,.04),mix(vec3(.03,.16,.30),vec3(.30,.07,.42),smoothstep(.4,1.,v)),v);gl_FragColor=vec4(c,1.);}`}));
+neb.renderOrder=-2;S.add(neb);
+
+/* ---------- сетки, пол, свет ---------- */
+const pg=new THREE.PolarGridHelper(7,14,7,96,0x2ad8ff,0x2ad8ff);pg.material.transparent=true;pg.material.opacity=.22;S.add(pg);
+const gg=new THREE.PlaneGeometry(14,14,56,56);gg.rotateX(-PI/2);const g0=gg.attributes.position.array.slice();
+const grid=new THREE.Mesh(gg,new THREE.MeshBasicMaterial({color:0x2ad8ff,wireframe:true,transparent:true,opacity:.16,depthWrite:false}));grid.position.y=-.01;S.add(grid);
+const floor=new THREE.Mesh(new THREE.PlaneGeometry(30,30),new THREE.ShadowMaterial({opacity:.55}));floor.rotation.x=-PI/2;floor.receiveShadow=true;S.add(floor);
+const hemi=new THREE.HemisphereLight(0x7a9cff,0x1a0f2e,.6);S.add(hemi);
+const key=new THREE.DirectionalLight(0xfff1d6,2.2);key.castShadow=true;key.shadow.mapSize.set(2048,2048);Object.assign(key.shadow.camera,{left:-4,right:4,top:4,bottom:-4,near:.5,far:24});key.shadow.bias=-.0005;S.add(key);
+const rim=new THREE.DirectionalLight(0x38c8ff,.8);rim.position.set(-3,2,-4);S.add(rim);
+function updLight(){const a=$('#az').value*PI/180,e=$('#el').value*PI/180;key.position.set(Math.sin(a)*Math.cos(e),Math.sin(e),Math.cos(a)*Math.cos(e)).multiplyScalar(9);key.intensity=+$('#ki').value;hemi.intensity=+$('#am').value;key.color.set($('#sp').value)}
+['#az','#el','#ki','#am'].forEach(s=>$(s).oninput=updLight);$('#sp').onchange=updLight;updLight();
+function warp(){const p=gg.attributes.position;for(let i=0;i<p.count;i++){const x=g0[i*3],z=g0[i*3+2];let y=0;for(const o of items){const dx=x-o.position.x,dz=z-o.position.z;y-=o.userData.mass*.28/(dx*dx+dz*dz+.7)}p.setY(i,Math.max(y,-1.3))}p.needsUpdate=true}
+$('#gw').onchange=e=>{grid.visible=e.target.checked};
+
+/* ---------- материалы ---------- */
+const FIB=(()=>{const c=document.createElement('canvas');c.width=c.height=128;const g=c.getContext('2d');g.fillStyle='#a02b3b';g.fillRect(0,0,128,128);
+ for(let x=0;x<128;x+=2){g.fillStyle=`rgba(${Math.random()<.5?'255,130,130':'50,0,10'},${Math.random()*.4})`;g.fillRect(x,0,2,128)}const t=new THREE.CanvasTexture(c);t.encoding=THREE.sRGBEncoding;t.wrapS=THREE.RepeatWrapping;return t})();
+const MT={metal:()=>new THREE.MeshStandardMaterial({color:0xb8c4d0,metalness:1,roughness:.25}),
+ holo:()=>new THREE.MeshStandardMaterial({color:0x2ad8ff,emissive:0x0a6c88,transparent:true,opacity:.45,roughness:.2,side:THREE.DoubleSide,depthWrite:false}),
+ plastic:()=>new THREE.MeshPhysicalMaterial({color:0xcfe8ff,transparent:true,opacity:.55,roughness:.1,clearcoat:1}),
+ muscle:()=>new THREE.MeshStandardMaterial({color:0xffffff,map:FIB,roughness:.5}),
+ wire:()=>new THREE.MeshBasicMaterial({color:0x4de8ff,wireframe:true})};
+function applyMat(o,k){o.traverse(m=>{if(m.isMesh&&!m.userData.layer)m.material=MT[k]()})}
+$$('[data-m]').forEach(b=>b.onclick=()=>sel&&applyMat(sel,b.dataset.m));
+
+/* ---------- сцена, выбор, гизмо ---------- */
+const world=new THREE.Group();S.add(world);const items=[];let sel=null,man=null,cnt=0;
+const TC=new THREE.TransformControls(C,R.domElement);TC.addEventListener('dragging-changed',e=>OC.enabled=!e.value);S.add(TC);
+$$('[data-tm]').forEach(b=>b.onclick=()=>setTM(b.dataset.tm));
+function setTM(m){TC.setMode(m);$$('[data-tm]').forEach(b=>b.classList.toggle('on',b.dataset.tm===m))}
+const halo=new THREE.Group(),hm=new THREE.MeshBasicMaterial({color:0x4de8ff,transparent:true,opacity:.6,depthWrite:false});
+[0,1].forEach(i=>{const r=new THREE.Mesh(new THREE.TorusGeometry(1,.007,6,120),hm);r.rotation.x=i?PI/2.6:PI/2;const s=new THREE.Mesh(new THREE.SphereGeometry(.03,10,8),new THREE.MeshBasicMaterial({color:0xffb347}));s.position.x=1;r.add(s);halo.add(r)});halo.visible=false;S.add(halo);
+function reg(o,name,mass){o.name=name;o.userData.mass=mass||1;o.userData.vel=new THREE.Vector3();world.add(o);items.push(o);select(o);return o}
+function select(o){sel=o;o?TC.attach(o):TC.detach();list()}
+function list(){const L=$('#list');L.innerHTML='';items.forEach(o=>{const d=document.createElement('div');d.textContent=o.name;if(o===sel)d.className='sel';d.onclick=()=>select(o);L.append(d)});if(!items.length)L.textContent='Сцена пуста — создайте объект'}
+let down=null;R.domElement.addEventListener('pointerdown',e=>down=[e.clientX,e.clientY]);
+R.domElement.addEventListener('pointerup',e=>{if(!down||TC.dragging||TC.axis)return;if(Math.hypot(e.clientX-down[0],e.clientY-down[1])>4)return;
+ const r=R.domElement.getBoundingClientRect(),rc=new THREE.Raycaster();rc.setFromCamera(new THREE.Vector2((e.clientX-r.left)/r.width*2-1,-(e.clientY-r.top)/r.height*2+1),C);
+ const h=rc.intersectObjects(items,true)[0];let o=h&&h.object;while(o&&!items.includes(o))o=o.parent;select(o||null)});
+function del(){if(!sel)return;const o=sel;select(null);world.remove(o);items.splice(items.indexOf(o),1);if(o===man)man=null;list()}
+$('#del').onclick=del;
+$('#dup').onclick=()=>{if(!sel||sel===man)return;const c=sel.clone();c.traverse(m=>{if(m.isMesh)m.material=m.material.clone()});c.position.x+=.5;reg(c,sel.name+' копия',1)};
+addEventListener('keydown',e=>{if(/INPUT|SELECT/.test(e.target.tagName))return;const k=e.key.toLowerCase();if(k=='w')setTM('translate');if(k=='e')setTM('rotate');if(k=='r')setTM('scale');if(e.key=='Delete')del()});
+
+/* ---------- примитивы ---------- */
+const PR={cube:['Куб',()=>new THREE.BoxGeometry(.6,.6,.6)],sphere:['Сфера',()=>new THREE.SphereGeometry(.35,40,24)],cylinder:['Цилиндр',()=>new THREE.CylinderGeometry(.25,.25,.7,32)],cone:['Конус',()=>new THREE.ConeGeometry(.3,.7,32)],torus:['Тор',()=>new THREE.TorusGeometry(.3,.1,20,48)],ico:['Кристалл',()=>new THREE.IcosahedronGeometry(.38,1)]};
+for(const k in PR){const b=document.createElement('button');b.textContent=PR[k][0];b.onclick=()=>{const m=new THREE.Mesh(PR[k][1](),MT.metal());m.castShadow=m.receiveShadow=true;m.position.set((Math.random()-.5)*2,1+Math.random(),(Math.random()-.5)*2);reg(m,PR[k][0]+' '+(++cnt),1)};$('#prims').append(b)}
+
+/* ---------- панель трансформации ---------- */
+const TF=$('#tf');[['Позиция','p'],['Вращение°','r'],['Масштаб','s']].forEach(([l,k])=>{const d=document.createElement('div');d.className='tr';d.innerHTML=`<span>${l}</span>`+[0,1,2].map(i=>`<input type="number" step="${k=='r'?5:.1}" data-k="${k}" data-i="${i}">`).join('');TF.append(d)});
+function syncT(){if(!sel)return;const v={p:sel.position.toArray(),r:[sel.rotation.x,sel.rotation.y,sel.rotation.z].map(a=>a*57.2958),s:sel.scale.toArray()};TF.querySelectorAll('input').forEach(e=>{if(document.activeElement!==e)e.value=(+v[e.dataset.k][e.dataset.i]).toFixed(2)})}
+TF.addEventListener('input',e=>{const t=e.target;if(!sel||!t.dataset.k)return;const k=t.dataset.k,i=+t.dataset.i,x=parseFloat(t.value);if(isNaN(x))return;
+ if(k=='p')sel.position.setComponent(i,x);else if(k=='s')sel.scale.setComponent(i,x||.01);else{const r=[sel.rotation.x,sel.rotation.y,sel.rotation.z];r[i]=x/57.2958;sel.rotation.set(...r)}});
+
+/* ---------- анатомический манекен ---------- */
+const SK=new THREE.MeshStandardMaterial({color:0xa9b9cc,roughness:.5,metalness:.05}),
+ MU=new THREE.MeshPhysicalMaterial({color:0xffffff,map:FIB,vertexColors:true,roughness:.42,clearcoat:.35,clearcoatRoughness:.4}),
+ BN=new THREE.MeshStandardMaterial({color:0xefe6d2,roughness:.6}),WF=new THREE.MeshBasicMaterial({color:0x4de8ff,wireframe:true,transparent:true,opacity:.5});
+const J={},SG=new THREE.SphereGeometry(1,24,16),SPG={},V=(r,y)=>new THREE.Vector2(r,y);
+function tag(m,l,p){m.userData.layer=l;m.castShadow=l!='wire';p.add(m);return m}
+function jt(p,n,x,y,z){const g=new THREE.Group();g.position.set(x,y,z);p.add(g);J[n]=g;return g}
+function bs(p,x,y,z,a,b,c){const m=new THREE.Mesh(SG,SK);m.scale.set(a*.92,b*.92,c*.92);m.position.set(x,y,z);return tag(m,'base',p)}
+/* профиль вращения (r,y снизу вверх) = гладкая "кожа"; base чуть меньше контура, чтобы мышцы выступали */
+function loft(p,pts,k=1){const q=[V(0,pts[0][1]),...pts.map(a=>V(a[0],a[1])),V(0,pts[pts.length-1][1])],g=new THREE.LatheGeometry(q,24);
+ const m=new THREE.Mesh(g,SK);m.scale.set(.9,1,.9*k);tag(m,'base',p);const w=new THREE.Mesh(g,WF);w.scale.set(1,1,k);tag(w,'wire',p)}
+function tube(p,len,r0,r1,k=1,bg=.007){const pts=[];for(let i=8;i>=0;i--){const t=i/8;pts.push([r0+(r1-r0)*t+bg*Math.sin(Math.PI*t),-len*t])}loft(p,pts,k);
+ const b=new THREE.Mesh(new THREE.CylinderGeometry(r0*.35,r1*.4,len*.96,8),BN);b.position.y=-len/2;tag(b,'bone',p)}
+/* веретенообразная мышца: q>1 — брюшко у начала, q<1 — у конца; края бледные (сухожилия) */
+function spg(q){if(SPG[q])return SPG[q];const pts=[],T=new THREE.Color(0xe9dcc6),B=new THREE.Color(0xb23645),c=new THREE.Color(),col=[];
+ for(let i=0;i<=14;i++){const t=i/14;pts.push(V(Math.pow(Math.sin(Math.PI*Math.pow(t,q)),.7),-1+2*t))}
+ const g=new THREE.LatheGeometry(pts,18),pa=g.attributes.position;
+ for(let i=0;i<pa.count;i++){const k=Math.min(1,Math.max(0,(Math.abs(pa.getY(i))-.55)/.4));c.copy(B).lerp(T,k*k);col.push(c.r,c.g,c.b)}
+ g.setAttribute('color',new THREE.Float32BufferAttribute(col,3));return SPG[q]=g}
+function mu(p,x,y,z,a,h,c,q=1,rot=[0,0,0]){const m=new THREE.Mesh(spg(q),MU);m.scale.set(a*1.12,h,c*1.25);m.position.set(x,y,z);m.rotation.set(...rot);return tag(m,'muscle',p)}
+function buildMan(){
+ const root=new THREE.Group(),pel=jt(root,'pelvis',0,.985,0);
+ loft(pel,[[.11,-.13],[.155,-.08],[.17,0],[.15,.08],[.13,.1]],.72);
+ const pb=new THREE.Mesh(new THREE.TorusGeometry(.12,.018,6,20),BN);pb.rotation.x=PI/2;pb.scale.y=.7;tag(pb,'bone',pel);
+ for(const s of[1,-1]){mu(pel,s*.075,-.05,-.075,.075,.1,.055,1,[0,0,-s*2.3]);mu(pel,s*.115,.03,-.05,.05,.06,.035,1.2)}
+ const sp=jt(pel,'spine',0,.08,0);loft(sp,[[.13,-.04],[.125,.04],[.13,.14],[.15,.26],[.165,.36],[.16,.44],[.09,.5]],.62);
+ const sb=new THREE.Mesh(new THREE.CylinderGeometry(.02,.02,.5,8),BN);sb.position.y=.25;tag(sb,'bone',sp);
+ for(let i=0;i<7;i++){const r=new THREE.Mesh(new THREE.TorusGeometry(.1+.025*Math.sin(i/6*PI),.006,6,24),BN);r.rotation.x=PI/2;r.scale.y=.65;r.position.y=.17+.05*i;tag(r,'bone',sp)}
+ for(const s of[1,-1]){
+  mu(sp,s*.08,.37,.085,.06,.1,.03,1,[0,0,-s*1.3]);
+  [.03,.11,.19].forEach(y=>mu(sp,s*.03,y,.078,.028,.04,.016));
+  mu(sp,s*.115,.12,.04,.04,.1,.03,1,[0,0,-s*.3]);
+  mu(sp,s*.11,.24,-.06,.06,.17,.025,1.2,[0,0,-s*.25]);
+  mu(sp,s*.07,.46,-.035,.035,.1,.02,1,[0,0,-s*2]);
+  mu(sp,s*.03,.15,-.085,.03,.2,.02)}
+ const nk=jt(sp,'neck',0,.47,0);loft(nk,[[.05,-.02],[.046,.06],[.044,.13]]);
+ loft(nk,[[.03,.08],[.065,.1],[.08,.14],[.09,.19],[.092,.24],[.08,.285],[.045,.315]],1.15);
+ const sk=new THREE.Mesh(SG,BN);sk.scale.set(.08,.095,.09);sk.position.y=.21;tag(sk,'bone',nk);
+ bs(nk,0,.175,.108,.014,.026,.024);bs(nk,0,.225,.1,.07,.012,.02);bs(nk,0,.098,.058,.026,.02,.02);
+ for(const s of[1,-1]){bs(nk,s*.095,.18,-.005,.012,.03,.018);mu(nk,s*.088,.15,.02,.02,.04,.03);mu(nk,s*.03,.05,.025,.014,.08,.014,1,[0,0,-s*.3])}
+ for(const[S,s]of[['L',1],['R',-1]]){
+  const sh=jt(sp,'shoulder'+S,s*.19,.45,0);bs(sh,0,0,0,.055,.055,.055);tube(sh,.3,.05,.04,1.05);
+  mu(sh,s*.045,-.05,0,.035,.075,.035,2);mu(sh,0,-.05,.035,.03,.075,.03,2);mu(sh,0,-.05,-.035,.03,.075,.03,2);
+  mu(sh,0,-.12,.03,.032,.09,.03,1.2);mu(sh,0,-.12,-.033,.035,.1,.03,1.4);
+  const el=jt(sh,'elbow'+S,0,-.3,0);bs(el,0,0,0,.04,.04,.04);tube(el,.27,.04,.026,1);
+  mu(el,s*.01,-.07,.026,.026,.09,.022,2);mu(el,-s*.005,-.08,.02,.028,.1,.022,1.8);mu(el,0,-.08,-.024,.028,.1,.022,1.6);
+  bs(el,0,-.31,0,.03,.05,.014);bs(el,0,-.375,0,.026,.04,.01);bs(el,s*.03,-.3,.01,.01,.03,.01);
+  const hp=jt(pel,'hip'+S,s*.09,-.05,0);bs(hp,0,0,0,.08,.08,.08);tube(hp,.46,.085,.055,1.02);
+  mu(hp,0,-.2,.058,.03,.17,.03,1.3);mu(hp,s*.05,-.22,.04,.036,.19,.032,1.5);mu(hp,-s*.035,-.3,.048,.03,.13,.03,.6);
+  mu(hp,s*.025,-.2,-.055,.035,.19,.03,1.3);mu(hp,-s*.025,-.2,-.055,.03,.19,.027,1.3);mu(hp,-s*.045,-.15,0,.035,.13,.03,1.8);
+  const kn=jt(hp,'knee'+S,0,-.46,0);bs(kn,0,0,0,.05,.05,.05);bs(kn,0,0,.045,.034,.034,.02);tube(kn,.45,.052,.034,.97);
+  mu(kn,-s*.02,-.1,-.045,.034,.12,.034,2.2);mu(kn,s*.022,-.1,-.043,.03,.11,.032,2.2);mu(kn,0,-.2,-.038,.03,.15,.026,1.2);mu(kn,s*.02,-.17,.034,.02,.15,.02,1.5);
+  bs(kn,0,-.44,.045,.04,.03,.095);bs(kn,0,-.435,-.03,.032,.035,.04);bs(kn,0,-.458,.13,.038,.012,.04)}
+ root.userData.root='mannequin';return root}
+
+const D=[];const add=(j,axis,label,min,max,sign)=>D.push({k:j+axis,j,axis,label,min,max,sign});
+add('spine','x','Торс: наклон',-30,60,1);add('spine','y','Торс: поворот',-45,45,1);add('neck','x','Шея: наклон',-40,50,1);
+for(const [S,s,n] of [['L',1,'Л'],['R',-1,'П']]){add('shoulder'+S,'x','Плечо '+n+': вперёд',-60,175,-1);add('shoulder'+S,'z','Плечо '+n+': в сторону',-20,175,s);add('elbow'+S,'x','Локоть '+n,0,145,-1);add('hip'+S,'x','Бедро '+n+': вперёд',-30,115,-1);add('hip'+S,'z','Бедро '+n+': в сторону',-15,60,s);add('knee'+S,'x','Колено '+n,0,140,1)}
+const PV={py:.985},Z={py:.985};D.forEach(d=>PV[d.k]=Z[d.k]=0);let tgt={...Z};
+const POSES={'Стойка':{shoulderLz:8,shoulderRz:8,elbowLx:6,elbowRx:6},'T-поза':{shoulderLz:90,shoulderRz:90},
+ 'Шаг':{hipLx:25,hipRx:-15,kneeLx:8,kneeRx:35,shoulderLx:-18,shoulderRx:22,elbowLx:15,elbowRx:25,shoulderLz:6,shoulderRz:6,spiney:6},
+ 'Бег':{spinex:14,hipLx:75,hipRx:-30,kneeLx:100,kneeRx:70,shoulderLx:-40,shoulderRx:45,elbowLx:90,elbowRx:90,shoulderLz:10,shoulderRz:10},
+ 'Сидя':{py:.5,hipLx:90,hipRx:90,kneeLx:90,kneeRx:90,shoulderLx:30,shoulderRx:30,elbowLx:40,elbowRx:40,spinex:5},
+ 'Руки вверх':{shoulderLx:170,shoulderRx:170,shoulderLz:12,shoulderRz:12}};
+for(const n in POSES){const b=document.createElement('button');b.textContent=n;b.onclick=()=>{tgt={...Z,...POSES[n]}};$('#poses').append(b)}
+D.forEach(d=>{const l=document.createElement('label');l.className='sl';l.innerHTML=`<span>${d.label}</span><input type="range" min="${d.min}" max="${d.max}" step="1" value="0" data-k="${d.k}"><b class="mono">0</b>`;$('#sliders').append(l)});
+$('#sliders').addEventListener('input',e=>{const k=e.target.dataset.k;if(!k)return;PV[k]=tgt[k]=+e.target.value;e.target.nextElementSibling.textContent=e.target.value;applyPose()});
+function applyPose(){if(!man)return;D.forEach(d=>{J[d.j].rotation[d.axis]=PV[d.k]*d.sign*PI/180});J.pelvis.position.y=PV.py}
+function syncSl(){$$('#sliders input').forEach(i=>{if(document.activeElement!==i){i.value=PV[i.dataset.k];i.nextElementSibling.textContent=Math.round(PV[i.dataset.k])}})}
+function tween(dt){let ch=false;for(const k in tgt){const d=tgt[k]-PV[k];if(Math.abs(d)>.005){PV[k]+=d*Math.min(1,dt*7);ch=true}}if(ch){applyPose();syncSl()}}
+const LY={muscle:true,base:true,wire:false};
+function layers(){if(!man)return;const x=$('#xray').checked;SK.transparent=MU.transparent=x;SK.opacity=MU.opacity=x?.22:1;SK.depthWrite=MU.depthWrite=!x;SK.needsUpdate=MU.needsUpdate=true;
+ man.traverse(m=>{const l=m.userData.layer;if(l)m.visible=l=='bone'?x:LY[l]})}
+$$('[data-l]').forEach(c=>c.onchange=()=>{LY[c.dataset.l]=c.checked;layers()});$('#xray').onchange=layers;
+$('#addMan').onclick=()=>{if(man)return select(man);man=reg(buildMan(),'Манекен',2.5);applyPose();layers()};
+
+/* ---------- физика ---------- */
+let mode='o';$('#mode').onchange=e=>{mode=e.target.value;items.forEach(o=>o.userData.vel.set(0,0,0));if(mode=='z')items.forEach(o=>o.userData.vel.set((Math.random()-.5)*.8,(Math.random()-.5)*.6,(Math.random()-.5)*.8))};
+const bx=new THREE.Box3(),sv=new THREE.Vector3();
+function phys(dt){if(mode=='o')return;const A=items.filter(o=>o!==man);
+ for(const o of A){const v=o.userData.vel;if(TC.dragging&&o===sel){v.set(0,0,0);continue}
+  if(mode=='g')v.y-=9.8*dt;o.position.addScaledVector(v,dt);
+  if(mode=='z'){o.rotation.x+=v.z*.4*dt;o.rotation.y+=v.x*.4*dt;if(o.position.y<.4||o.position.y>6){o.position.y=Math.min(6,Math.max(.4,o.position.y));v.y*=-1}}
+  for(const a of['x','z'])if(Math.abs(o.position[a])>5){o.position[a]=Math.sign(o.position[a])*5;v[a]*=-1}
+  bx.setFromObject(o);bx.getSize(sv);o.userData.r=Math.max(sv.x,sv.y,sv.z)*.45;
+  if(mode=='g'&&bx.min.y<0){o.position.y-=bx.min.y;v.y*=-.4;v.x*=.96;v.z*=.96;if(Math.abs(v.y)<.4)v.y=0}}
+ for(let i=0;i<A.length;i++)for(let j=i+1;j<A.length;j++){const a=A[i],b=A[j],d=b.position.clone().sub(a.position),L=d.length(),m=a.userData.r+b.userData.r;
+  if(L<m&&L>1e-4){d.multiplyScalar(1/L);const p=(m-L)/2;a.position.addScaledVector(d,-p);b.position.addScaledVector(d,p);const vr=b.userData.vel.clone().sub(a.userData.vel).dot(d);
+   if(vr<0){a.userData.vel.addScaledVector(d,vr);b.userData.vel.addScaledVector(d,-vr)}}}}
+
+/* ---------- камера, экспорт, AR ---------- */
+[['Спереди',[0,1,4.6]],['Сбоку',[4.6,1,0]],['Сзади',[0,1,-4.6]],['Сверху',[0,6.5,.01]]].forEach(([n,p])=>{const b=document.createElement('button');b.textContent=n;b.onclick=()=>{C.position.set(...p);OC.target.set(0,.9,0)};$('#cams').append(b)});
+$('#spin').onchange=e=>OC.autoRotate=e.target.checked;
+function glb(cb){new THREE.GLTFExporter().parse(sel||world,b=>cb(new Blob([b],{type:'model/gltf-binary'})),{binary:true,onlyVisible:true})}
+let url=null;const mk=b=>{if(url)URL.revokeObjectURL(url);return url=URL.createObjectURL(b)};
+$('#exp').onclick=()=>glb(b=>{const a=document.createElement('a');a.href=mk(b);a.download='orbita.glb';a.click()});
+$('#arb').onclick=()=>glb(b=>{$('#mv').src=mk(b);$('#ar').style.display='flex'});$('#arx').onclick=()=>$('#ar').style.display='none';
+$('#hud').onclick=()=>{document.body.classList.toggle('hide');$('#hud').textContent=document.body.classList.contains('hide')?'Показать панели':'Скрыть панели'};
+
+/* ---------- запуск и цикл ---------- */
+man=reg(buildMan(),'Манекен',2.5);applyPose();layers();select(null);
+const clk=new THREE.Clock();let fps=60,tt=0;
+(function loop(){requestAnimationFrame(loop);const dt=Math.min(clk.getDelta(),.05);stars.material.uniforms.t.value+=dt;OC.update();phys(dt);tween(dt);if(grid.visible)warp();
+ if(sel){const b=new THREE.Box3().setFromObject(sel);halo.visible=true;b.getCenter(halo.position);halo.scale.setScalar(Math.max(.3,b.getSize(sv).length()*.45));halo.children[0].rotation.z+=dt*.8;halo.children[1].rotation.z-=dt*.5;syncT()}else halo.visible=false;
+ R.render(S,C);if(dt>0)fps+=(1/dt-fps)*.05;if((tt+=dt)>.3){tt=0;const p=sel?sel.position:null;$('#tele').textContent=`FPS ${fps|0}  дист ${C.position.distanceTo(OC.target).toFixed(2)} м  объектов ${items.length}`+(p?`  X ${p.x.toFixed(2)} Y ${p.y.toFixed(2)} Z ${p.z.toFixed(2)}`:'')}})();
+</script></body></html>
